@@ -5,12 +5,13 @@ import { UserRole } from '../types';
 import { supabase } from '../supabaseClient';
 
 interface Props {
-  onLogin: (username: string, password?: string, roleOverride?: UserRole) => void;
+  onLogin: (username: string, password?: string, roleOverride?: UserRole) => Promise<void>;
 }
 
 export const Login: React.FC<Props> = ({ onLogin }) => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [error, setError] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -45,10 +46,16 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
     }
   });
 
-  const handleLoginSubmit = (targetRole?: UserRole) => {
+  const handleLoginSubmit = async (targetRole?: UserRole) => {
     setLoading(true);
-    onLogin(username, password, targetRole);
-    setTimeout(() => setLoading(false), 2000);
+    setError('');
+    try {
+      await onLogin(username, password, targetRole);
+      // Success: onAuthStateChange will set user and App will unmount Login
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+      setLoading(false);
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -115,6 +122,12 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
                 <ShieldCheck size={12} /> MEMBER LOGIN
               </span>
             </div>
+
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-4 py-3 rounded-2xl text-center">
+                {error}
+              </div>
+            )}
 
             <input
               type="text"

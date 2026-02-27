@@ -36,6 +36,12 @@ const mockClient = {
   })
 };
 
-export const supabase = isConfigured 
-  ? createClient(PROJECT_URL, PROJECT_KEY) 
+export const supabase = isConfigured
+  ? createClient(PROJECT_URL, PROJECT_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    })
   : (mockClient as any);
