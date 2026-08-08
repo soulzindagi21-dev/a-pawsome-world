@@ -4,12 +4,13 @@ import { Loader2, ShieldCheck, UserPlus, Mail, User, MapPin } from 'lucide-react
 import { UserRole } from '../types';
 
 interface Props {
-  onRegister: (userData: any) => void;
+  onRegister: (userData: any) => Promise<void>;
   onBackToLogin: () => void;
 }
 
 export const Register: React.FC<Props> = ({ onRegister, onBackToLogin }) => {
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [formData, setFormData] = useState({
     name: '',
     username: '',
@@ -23,14 +24,17 @@ export const Register: React.FC<Props> = ({ onRegister, onBackToLogin }) => {
     setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Let App.tsx handle the Supabase logic
-    onRegister(formData);
-    // App.tsx will unmount this component on success.
-    // We add a timeout to reset loading if it fails (App.tsx alerts on error)
-    setTimeout(() => setLoading(false), 2000);
+    setError('');
+    try {
+      await onRegister(formData);
+      // Success: App.tsx will unmount this component
+    } catch (err: any) {
+      setError(err.message || 'Registration failed');
+      setLoading(false);
+    }
   };
 
   return (
@@ -56,6 +60,12 @@ export const Register: React.FC<Props> = ({ onRegister, onBackToLogin }) => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-700 text-xs font-semibold px-4 py-3 rounded-2xl text-center">
+              {error}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="relative">

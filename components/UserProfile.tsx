@@ -1,15 +1,16 @@
 
 import React, { useState } from 'react';
-import { ArrowLeft, LogOut, MapPin, User, Settings, Shield, Bell, HeartHandshake, X } from 'lucide-react';
-import { Appeal, AppealType } from '../types';
+import { ArrowLeft, LogOut, MapPin, User as UserIcon, Settings, Shield, Bell, HeartHandshake, X } from 'lucide-react';
+import { Appeal, AppealType, User } from '../types';
 
 interface Props {
+  user: User;
   onBack: () => void;
   onLogout: () => void;
   onAddAppeal?: (appeal: Appeal) => void;
 }
 
-export const UserProfile: React.FC<Props> = ({ onBack, onLogout, onAddAppeal }) => {
+export const UserProfile: React.FC<Props> = ({ user, onBack, onLogout, onAddAppeal }) => {
   const [showAppealForm, setShowAppealForm] = useState(false);
   const [appealData, setAppealData] = useState({
     type: AppealType.DONATION,
@@ -18,19 +19,6 @@ export const UserProfile: React.FC<Props> = ({ onBack, onLogout, onAddAppeal }) 
     urgency: 'MEDIUM',
     location: ''
   });
-
-  // Mock user data
-  const user = {
-    name: "Alex Johnson",
-    role: "Verified Feeder",
-    zone: "Baker Street, Lane 4",
-    joined: "March 2023",
-    stats: {
-      dogsFed: 12,
-      reportsSubmitted: 5,
-      karmaPoints: 850
-    }
-  };
 
   const handleSubmitAppeal = () => {
     if(!appealData.title || !appealData.description || !onAddAppeal) return;
@@ -203,7 +191,7 @@ export const UserProfile: React.FC<Props> = ({ onBack, onLogout, onAddAppeal }) 
             <span className="text-sm font-bold text-slate-700">Account Settings</span>
          </button>
          <button className="w-full p-4 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors border-b border-gray-100">
-            <User size={20} className="text-gray-400" />
+            <UserIcon size={20} className="text-gray-400" />
             <span className="text-sm font-bold text-slate-700">Personal Information</span>
          </button>
          <button className="w-full p-4 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors border-b border-gray-100">

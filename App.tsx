@@ -583,9 +583,10 @@ const MainApp: React.FC<{ onLogout: () => void, initialUser: User, onUpdateUser:
           /> :
           <Dashboard dogs={dogs} user={initialUser} onSelectDog={setSelectedDog} onNavigate={setCurrentView} />;
       case 'USER_PROFILE':
-        return <UserProfile 
-                  onBack={() => setCurrentView('DASHBOARD')} 
-                  onLogout={onLogout} 
+        return <UserProfile
+                  user={initialUser}
+                  onBack={() => setCurrentView('DASHBOARD')}
+                  onLogout={onLogout}
                   onAddAppeal={handleAddAppeal}
                />;
       case 'SOCIAL_GENERATOR':
@@ -834,42 +835,74 @@ const App = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
-  // Check for existing session on mount
+  // Single source of truth: onAuthStateChange handles all session state.
+  // No getSession() call — avoids the race condition where getSession()
+  // returns null before Supabase finishes parsing OAuth URL tokens.
   useEffect(() => {
-    const checkSession = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (session?.user) {
-          // Fetch the user profile from the public.users table
-          const { data: profileData, error: profileError } = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', session.user.id)
-            .single();
+    let mounted = true;
+    let currentFetchId = 0; // Invalidates stale profile fetches on rapid auth events
 
-          if (profileData) {
-            setUser({
-              id: profileData.id,
-              name: profileData.name,
-              username: profileData.username,
-              role: profileData.role,
-              zone: profileData.zone || profileData.location,
-              joinedDate: profileData.joined_date || profileData.created_at,
-              stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
-              feedingStreak: profileData.feeding_streak || 0,
-              lastProofDate: profileData.last_proof_date || null,
-              credits: profileData.credits ?? 20
-            });
-          } else {
-            // Fallback to metadata if profile fetch fails
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+
+        if (event === 'PASSWORD_RECOVERY') {
+          setIsPasswordRecovery(true);
+          return;
+        }
+
+        if (session?.user) {
+          const fetchId = ++currentFetchId;
+
+          try {
+            const { data: profileData } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+
+            // Bail if component unmounted or a newer auth event superseded this one
+            if (!mounted || fetchId !== currentFetchId) return;
+
+            if (profileData) {
+              setUser({
+                id: profileData.id,
+                name: profileData.name,
+                username: profileData.username,
+                role: profileData.role,
+                zone: profileData.zone || profileData.location,
+                joinedDate: profileData.joined_date || profileData.created_at,
+                stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
+                feedingStreak: profileData.feeding_streak || 0,
+                lastProofDate: profileData.last_proof_date || null,
+                credits: profileData.credits ?? 20
+              });
+            } else {
+              const meta = session.user.user_metadata;
+              setUser({
+                id: session.user.id,
+                name: meta?.name || 'User',
+                username: meta?.username || session.user.email?.split('@')[0] || 'user',
+                role: meta?.role || UserRole.CITIZEN,
+                zone: meta?.zone || meta?.location || 'Unknown Zone',
+                joinedDate: session.user.created_at.split('T')[0],
+                stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
+                feedingStreak: 0,
+                lastProofDate: null,
+                credits: 20
+              });
+            }
+          } catch (err) {
+            if (!mounted || fetchId !== currentFetchId) return;
+            console.error("Profile fetch error:", err);
+            // Fallback to auth metadata so the user isn't locked out
             const meta = session.user.user_metadata;
             setUser({
               id: session.user.id,
-              name: meta.name || 'Unknown User',
-              username: meta.username || session.user.email?.split('@')[0] || 'user',
-              role: meta.role || UserRole.CITIZEN,
-              zone: meta.zone || meta.location || 'Unknown Zone',
+              name: meta?.name || 'User',
+              username: meta?.username || session.user.email?.split('@')[0] || 'user',
+              role: meta?.role || UserRole.CITIZEN,
+              zone: meta?.zone || meta?.location || 'Unknown Zone',
               joinedDate: session.user.created_at.split('T')[0],
               stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
               feedingStreak: 0,
@@ -877,28 +910,19 @@ const App = () => {
               credits: 20
             });
           }
+        } else {
+          currentFetchId++; // Invalidate any in-flight profile fetches
+          setUser(null);
         }
-      } catch (err) {
-        console.error("Session check error:", err);
-      } finally {
-        setIsAuthLoading(false);
-      }
-    };
 
-    checkSession();
-
-    // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') {
-        setIsPasswordRecovery(true);
-        return;
+        // Release loading screen only after the first auth event fully resolves
+        // (including the async profile fetch above).
+        if (mounted) setIsAuthLoading(false);
       }
-      if (!session) {
-        setUser(null);
-      }
-    });
+    );
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -923,7 +947,7 @@ const App = () => {
 
   const handleLogin = async (username: string, password?: string, roleOverride?: UserRole) => {
     if (roleOverride) {
-      // Handle mock login for admin or special roles
+      // Mock login for admin — no Supabase event, so set user directly
       setUser({
         id: 'mock-admin',
         name: 'Administrator',
@@ -939,107 +963,52 @@ const App = () => {
       return;
     }
 
-    try {
-      // Use Supabase Auth for login
-      const email = username.includes('@') ? username : `${username}@example.com`;
-      
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password || 'defaultpassword'
-      });
+    // Only authenticate — onAuthStateChange listener handles profile fetch + setUser
+    const email = username.includes('@') ? username : `${username}@example.com`;
 
-      if (error) {
-        console.error("Login error:", error);
-        alert(`Login failed: ${error.message}`);
-        return;
-      }
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: password || 'defaultpassword'
+    });
 
-      if (data.user) {
-        // Fetch the user profile from the public.users table (created by the trigger)
-        const { data: profileData, error: profileError } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', data.user.id)
-          .single();
-
-        if (profileError) {
-          console.error("Error fetching user profile:", profileError);
-          // Fallback to metadata if profile fetch fails
-          const meta = data.user.user_metadata;
-          setUser({
-            id: data.user.id,
-            name: meta.name || 'Unknown User',
-            username: meta.username || username,
-            role: meta.role || UserRole.CITIZEN,
-            zone: meta.zone || meta.location || 'Unknown Zone',
-            joinedDate: data.user.created_at.split('T')[0],
-            stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
-            feedingStreak: 0,
-            lastProofDate: null,
-            credits: 20
-          });
-        } else if (profileData) {
-          setUser({
-            id: profileData.id,
-            name: profileData.name,
-            username: profileData.username,
-            role: profileData.role,
-            zone: profileData.zone || profileData.location,
-            joinedDate: profileData.joined_date || profileData.created_at,
-            stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
-            feedingStreak: profileData.feeding_streak || 0,
-            lastProofDate: profileData.last_proof_date || null,
-            credits: profileData.credits ?? 20
-          });
-        }
-      }
-    } catch (err) {
-      console.error("Unexpected login error:", err);
-      alert("An unexpected error occurred during login.");
-    }
+    if (error) throw error;
   };
 
   const handleRegister = async (userData: any) => {
-    try {
-      const { data, error } = await supabase.auth.signUp({
-        email: userData.email,
-        password: userData.password,
-        options: {
-          data: {
-            name: userData.name,
-            username: userData.username,
-            location: userData.zone,
-            role: userData.role
-          }
+    const { data, error } = await supabase.auth.signUp({
+      email: userData.email,
+      password: userData.password,
+      options: {
+        data: {
+          name: userData.name,
+          username: userData.username,
+          location: userData.zone,
+          role: userData.role
         }
+      }
+    });
+
+    if (error) throw error;
+
+    // If Supabase returned a session, onAuthStateChange handles setUser.
+    // If no session (email confirmation required), set user from signup data directly.
+    if (!data.session && data.user) {
+      const meta = data.user.user_metadata;
+      setUser({
+        id: data.user.id,
+        name: meta.name || userData.name,
+        username: meta.username || userData.username,
+        role: meta.role || userData.role,
+        zone: meta.zone || meta.location || userData.zone,
+        joinedDate: data.user.created_at ? data.user.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+        stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
+        feedingStreak: 0,
+        lastProofDate: null,
+        credits: 20
       });
-
-      if (error) {
-        console.error("Registration error:", error);
-        alert(`Registration failed: ${error.message}`);
-        return;
-      }
-
-      if (data.user) {
-        const meta = data.user.user_metadata;
-        setUser({
-          id: data.user.id,
-          name: meta.name || userData.name,
-          username: meta.username || userData.username,
-          role: meta.role || userData.role,
-          zone: meta.zone || meta.location || userData.zone,
-          joinedDate: data.user.created_at ? data.user.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-          stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
-          feedingStreak: 0,
-          lastProofDate: null,
-          credits: 20 // Free trial credits for new users
-        });
-        setIsRegistering(false);
-      }
-    } catch (err) {
-      console.error("Unexpected registration error:", err);
-      alert("An unexpected error occurred during registration.");
     }
+
+    setIsRegistering(false);
   };
 
   if (isAuthLoading) {

@@ -37,7 +37,13 @@ const mockClient = {
 };
 
 export const supabase = isConfigured
-  ? createClient(PROJECT_URL, PROJECT_KEY)
+  ? createClient(PROJECT_URL, PROJECT_KEY, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true
+      }
+    })
   : (mockClient as any);
 
 // NOTE: credit spending is intentionally NOT exposed here anymore. It used to
