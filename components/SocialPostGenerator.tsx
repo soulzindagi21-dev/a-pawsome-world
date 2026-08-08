@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AchievementContext } from '../types';
-import { generateAchievementImage, generateSocialCaption } from '../geminiService';
+import { generateAchievementImage, generateSocialCaption, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 import { ArrowLeft, Share2, Download, Sparkles, Loader2, Key } from 'lucide-react';
 
 interface Props {
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const SocialPostGenerator: React.FC<Props> = ({ context, onBack }) => {
+  const { spend, sync } = useCredits();
   const [loading, setLoading] = useState(false);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [caption, setCaption] = useState<string>('');
@@ -36,18 +38,28 @@ export const SocialPostGenerator: React.FC<Props> = ({ context, onBack }) => {
 
   const handleGenerate = async () => {
     setLoading(true);
-    
+
+    if (!(await spend(2))) {
+      setLoading(false);
+      return;
+    }
+
     try {
       // Fix: API key injection handled by environment, removed manual passing
       const [img, cap] = await Promise.all([
         generateAchievementImage(context),
         generateSocialCaption(context)
       ]);
+      if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
       setGeneratedImage(img);
       setCaption(cap);
     } catch (e) {
-      console.error(e);
-      alert("Generation failed. Please ensure you have selected a valid API Key.");
+      if (e instanceof InsufficientCreditsError) {
+        alert("You're out of AI credits! Please contact an admin to top up your account.");
+      } else {
+        console.error(e);
+        alert("Generation failed. Please try again.");
+      }
     } finally {
       setLoading(false);
     }

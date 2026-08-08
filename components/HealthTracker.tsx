@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Dog, HealthLog, MedicalRecord } from '../types';
 import { SYMPTOMS_LIST } from '../constants';
-import { analyzeHealthLog, fileToGenerativePart, processHealthAudio } from '../geminiService';
+import { analyzeHealthLog, fileToGenerativePart, processHealthAudio, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 import { ArrowLeft, Loader2, Stethoscope, AlertCircle, Thermometer, Activity, HeartPulse, ChevronDown, FilePlus, CheckCircle, Camera, X, Info, Mic } from 'lucide-react';
 
 interface Props {
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export const HealthTracker: React.FC<Props> = ({ dog, allDogs, onSelectDog, onUpdateDog, onBack }) => {
+  const { spend, sync } = useCredits();
   const [loading, setLoading] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -97,12 +99,25 @@ export const HealthTracker: React.FC<Props> = ({ dog, allDogs, onSelectDog, onUp
           stream.getTracks().forEach(track => track.stop());
           
           setIsProcessingAudio(true);
-          const transcribedText = await processHealthAudio(audioBlob);
-          
-          setLog(prev => ({
-             ...prev,
-             notes: prev.notes ? `${prev.notes}\n\n[Voice Note]: ${transcribedText}` : `[Voice Note]: ${transcribedText}`
-          }));
+          if (!(await spend(1))) {
+            setIsProcessingAudio(false);
+            return;
+          }
+          try {
+            const transcribedText = await processHealthAudio(audioBlob);
+            if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
+
+            setLog(prev => ({
+               ...prev,
+               notes: prev.notes ? `${prev.notes}\n\n[Voice Note]: ${transcribedText}` : `[Voice Note]: ${transcribedText}`
+            }));
+          } catch (e) {
+            if (e instanceof InsufficientCreditsError) {
+              alert("You're out of AI credits! Please contact an admin to top up your account.");
+            } else {
+              alert("Could not transcribe audio. Please type notes manually.");
+            }
+          }
           setIsProcessingAudio(false);
         };
 
@@ -118,15 +133,29 @@ export const HealthTracker: React.FC<Props> = ({ dog, allDogs, onSelectDog, onUp
   const handleAnalysis = async () => {
     setLoading(true);
     setAnalysis(null);
-    
+
+    if (!(await spend(1))) {
+      setLoading(false);
+      return;
+    }
+
     let base64 = undefined;
     if (imageFile) {
       const part = await fileToGenerativePart(imageFile);
       base64 = part.inlineData.data;
     }
 
-    const result = await analyzeHealthLog(log, dog.breed, dog.age, base64);
-    setAnalysis(result);
+    try {
+      const result = await analyzeHealthLog(log, dog.breed, dog.age, base64);
+      if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
+      setAnalysis(result);
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        alert("You're out of AI credits! Please contact an admin to top up your account.");
+      } else {
+        setAnalysis('AI service temporarily unavailable. Please consult a vet if symptoms persist.');
+      }
+    }
     setLoading(false);
   };
 

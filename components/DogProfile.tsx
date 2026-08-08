@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { Dog, Reminder, MedicalRecord } from '../types';
 import { ArrowLeft, Weight, Activity, Syringe, FileText, User, Heart, Tag, Calendar, Bell, Plus, X, CheckCircle, Clock, Trash2, Pencil, SquarePlus, Save, Info, Sparkles, TrendingUp, TrendingDown, AlertTriangle, Stethoscope, ChevronLeft, ChevronRight, ScanLine, FileCheck, Loader2, Image as ImageIcon, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
-import { parseVetBook, fileToGenerativePart } from '../geminiService';
+import { parseVetBook, fileToGenerativePart, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 
 interface Props {
   dog: Dog;
@@ -34,6 +35,7 @@ const generateWeeklyData = () => {
 };
 
 export const DogProfile: React.FC<Props> = ({ dog, onBack, onEdit, onViewHistory, onUpdateDog, onDelete, onCheckHealth }) => {
+  const { spend, sync } = useCredits();
   const [activeTab, setActiveTab] = useState<'INFO' | 'VET' | 'GALLERY'>('INFO');
   
   // View Mode: Weekly vs Monthly
@@ -294,15 +296,24 @@ export const DogProfile: React.FC<Props> = ({ dog, onBack, onEdit, onViewHistory
     setIsScanning(true);
     setScanError(null);
     try {
+        if (!(await spend(1))) {
+          setIsScanning(false);
+          return;
+        }
         // Convert all files to base64 parts
         const parts = await Promise.all(scanFiles.map(f => fileToGenerativePart(f)));
         // Extract only the base64 data strings for the service
         const base64Strings = parts.map(p => p.inlineData.data);
         
         const result = await parseVetBook(base64Strings);
+        if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
         setScanResult(result);
     } catch(e) {
-        setScanError("Unable to analyze documents. Please ensure the image is clear and contains readable text.");
+        if (e instanceof InsufficientCreditsError) {
+          alert("You're out of AI credits! Please contact an admin to top up your account.");
+        } else {
+          setScanError("Unable to analyze documents. Please ensure the image is clear and contains readable text.");
+        }
     } finally {
         setIsScanning(false);
     }

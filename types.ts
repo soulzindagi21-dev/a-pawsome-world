@@ -151,6 +151,7 @@ export interface User {
   };
   feedingStreak: number; // Consecutive days
   lastProofDate: string | null; // ISO Date string
+  credits: number; // AI feature credits
 }
 
 export type ViewState = 'DASHBOARD' | 'PROFILE' | 'HEALTH_LOG' | 'STREET_WATCH' | 'CRIME_REPORT' | 'COMMUNITY' | 'VET_BOOK' | 'ADD_DOG' | 'EDIT_DOG' | 'MEDICAL_HISTORY' | 'USER_PROFILE' | 'SOCIAL_GENERATOR' | 'FEEDING_PROOF';

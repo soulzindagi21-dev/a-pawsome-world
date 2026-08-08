@@ -14,9 +14,11 @@ import { MedicalHistoryView } from './components/MedicalHistoryView';
 import { UserProfile } from './components/UserProfile';
 import { Login } from './components/Login';
 import { Register } from './components/Register';
+import { ResetPassword } from './components/ResetPassword';
 import { SocialPostGenerator } from './components/SocialPostGenerator';
 import { FeedingProofUpload } from './components/FeedingProofUpload';
 import { LanguageProvider, useLanguage, LANGUAGES } from './i18n';
+import { CreditsProvider, useCredits } from './creditsContext';
 import { Menu, Bell, Plus, User as UserIcon, Globe, ClipboardList, Wifi, AlertCircle, X, LogOut, ShieldCheck, Lock, Loader2, Database } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -129,7 +131,8 @@ const MainApp: React.FC<{ onLogout: () => void, initialUser: User, onUpdateUser:
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isAppLoading, setIsAppLoading] = useState(true);
-  
+  const { credits } = useCredits();
+
   // Achievement / Social Generator State
   const [selectedAchievement, setSelectedAchievement] = useState<Achievement | null>(null);
 
@@ -711,6 +714,13 @@ const MainApp: React.FC<{ onLogout: () => void, initialUser: User, onUpdateUser:
           </div>
           
           <div className="flex items-center gap-3">
+            <div
+              title="AI feature credits remaining"
+              className="px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-900/40 dark:text-teal-300 dark:border-teal-800"
+            >
+              ✨ {credits} Credits
+            </div>
+
             <div className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wide border ${initialUser.role === UserRole.ADMIN ? 'bg-purple-100 text-purple-700 border-purple-200' : isCitizen ? 'bg-gray-100 text-gray-500 border-gray-200' : 'bg-orange-50 text-orange-600 border-orange-200'}`}>
                 {initialUser.role.replace('_', ' ')}
             </div>
@@ -822,6 +832,7 @@ const App = () => {
   const [user, setUser] = useState<User | null>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
 
   // Check for existing session on mount
   useEffect(() => {
@@ -847,7 +858,8 @@ const App = () => {
               joinedDate: profileData.joined_date || profileData.created_at,
               stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
               feedingStreak: profileData.feeding_streak || 0,
-              lastProofDate: profileData.last_proof_date || null
+              lastProofDate: profileData.last_proof_date || null,
+              credits: profileData.credits ?? 20
             });
           } else {
             // Fallback to metadata if profile fetch fails
@@ -861,7 +873,8 @@ const App = () => {
               joinedDate: session.user.created_at.split('T')[0],
               stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
               feedingStreak: 0,
-              lastProofDate: null
+              lastProofDate: null,
+              credits: 20
             });
           }
         }
@@ -875,7 +888,11 @@ const App = () => {
     checkSession();
 
     // Listen for auth state changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        return;
+      }
       if (!session) {
         setUser(null);
       }
@@ -916,7 +933,8 @@ const App = () => {
         joinedDate: new Date().toISOString().split('T')[0],
         stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
         feedingStreak: 0,
-        lastProofDate: null
+        lastProofDate: null,
+        credits: 9999
       });
       return;
     }
@@ -957,7 +975,8 @@ const App = () => {
             joinedDate: data.user.created_at.split('T')[0],
             stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
             feedingStreak: 0,
-            lastProofDate: null
+            lastProofDate: null,
+            credits: 20
           });
         } else if (profileData) {
           setUser({
@@ -969,7 +988,8 @@ const App = () => {
             joinedDate: profileData.joined_date || profileData.created_at,
             stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
             feedingStreak: profileData.feeding_streak || 0,
-            lastProofDate: profileData.last_proof_date || null
+            lastProofDate: profileData.last_proof_date || null,
+            credits: profileData.credits ?? 20
           });
         }
       }
@@ -1011,7 +1031,8 @@ const App = () => {
           joinedDate: data.user.created_at ? data.user.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
           stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
           feedingStreak: 0,
-          lastProofDate: null
+          lastProofDate: null,
+          credits: 20 // Free trial credits for new users
         });
         setIsRegistering(false);
       }
@@ -1030,6 +1051,10 @@ const App = () => {
     );
   }
 
+  if (isPasswordRecovery) {
+    return <ResetPassword onDone={() => setIsPasswordRecovery(false)} />;
+  }
+
   if (!user) {
     if (isRegistering) {
       return <Register onRegister={handleRegister} onBackToLogin={() => setIsRegistering(false)} />;
@@ -1039,11 +1064,17 @@ const App = () => {
 
   return (
     <LanguageProvider>
-      <MainApp 
-        onLogout={handleLogout} 
-        initialUser={user} 
-        onUpdateUser={setUser} 
-      />
+      <CreditsProvider
+        userId={user.id}
+        initialCredits={user.credits}
+        onCreditsChange={(newCredits) => setUser(prev => prev ? { ...prev, credits: newCredits } : prev)}
+      >
+        <MainApp
+          onLogout={handleLogout}
+          initialUser={user}
+          onUpdateUser={setUser}
+        />
+      </CreditsProvider>
     </LanguageProvider>
   );
 };

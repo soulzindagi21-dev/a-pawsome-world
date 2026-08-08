@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { analyzeCrimeReport, fileToGenerativePart } from '../geminiService';
+import { analyzeCrimeReport, fileToGenerativePart, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 import { ShieldAlert, ArrowLeft, Loader2, Camera, AlertOctagon } from 'lucide-react';
 
 interface Props {
@@ -7,6 +8,7 @@ interface Props {
 }
 
 export const CrimeReporter: React.FC<Props> = ({ onBack }) => {
+  const { spend, sync } = useCredits();
   const [description, setDescription] = useState('');
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{assessment: string, isCruelty: boolean, severity: string} | null>(null);
@@ -15,15 +17,29 @@ export const CrimeReporter: React.FC<Props> = ({ onBack }) => {
   const handleSubmit = async () => {
     if (!description) return;
     setLoading(true);
-    
+
+    if (!(await spend(1))) {
+      setLoading(false);
+      return;
+    }
+
     let base64 = undefined;
     if (imageFile) {
       const part = await fileToGenerativePart(imageFile);
       base64 = part.inlineData.data;
     }
 
-    const aiResult = await analyzeCrimeReport(description, base64);
-    setResult(aiResult);
+    try {
+      const aiResult = await analyzeCrimeReport(description, base64);
+      if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
+      setResult(aiResult);
+    } catch (e) {
+      if (e instanceof InsufficientCreditsError) {
+        alert("You're out of AI credits! Please contact an admin to top up your account.");
+      } else {
+        setResult({ assessment: 'Could not process. Please report to local authorities immediately.', isCruelty: true, severity: 'UNKNOWN' });
+      }
+    }
     setLoading(false);
   };
 

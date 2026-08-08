@@ -36,6 +36,11 @@ const mockClient = {
   })
 };
 
-export const supabase = isConfigured 
-  ? createClient(PROJECT_URL, PROJECT_KEY) 
+export const supabase = isConfigured
+  ? createClient(PROJECT_URL, PROJECT_KEY)
   : (mockClient as any);
+
+// NOTE: credit spending is intentionally NOT exposed here anymore. It used to
+// call the spend_credits() RPC directly from the browser, which meant any
+// user could skip the deduction by editing client-side JS. Credit spending is
+// now enforced authoritatively inside the ai-proxy Edge Function instead.

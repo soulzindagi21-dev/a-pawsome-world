@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MAP_STYLE } from '../constants';
 import { MapPin, Eye, Search, AlertTriangle, Info, Shield, Camera, Stethoscope, ArrowLeft, CheckCircle, Target, Truck, AlertOctagon, Navigation, Globe, ExternalLink, Loader2, Sparkles } from 'lucide-react';
-import { matchStrayDog, fileToGenerativePart, searchLocalDogServices } from '../geminiService';
+import { matchStrayDog, fileToGenerativePart, searchLocalDogServices, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 import { Dog, DogType } from '../types';
 
 declare global {
@@ -21,6 +22,7 @@ interface Props {
 }
 
 export const StreetWatch: React.FC<Props> = ({ dogs = [] }) => {
+  const { spend, sync } = useCredits();
   const [activeTab, setActiveTab] = useState<'MAP' | 'MISSING' | 'REPORT' | 'EXPLORE'>('MAP');
   const [matchResult, setMatchResult] = useState<string | null>(null);
   const [features, setFeatures] = useState<{ label: string; box_2d: number[] }[]>([]);
@@ -305,12 +307,20 @@ export const StreetWatch: React.FC<Props> = ({ dogs = [] }) => {
         setFeatures([]);
         
         try {
+            if (!(await spend(1))) {
+              setIsMatching(false);
+              return;
+            }
             const base64Part = await fileToGenerativePart(file);
             const result = await matchStrayDog(base64Part.inlineData.data);
-            
+            if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
+
             setMatchResult(result.text);
             setFeatures(result.features);
         } catch(e) {
+            if (e instanceof InsufficientCreditsError) {
+              alert("You're out of AI credits! Please contact an admin to top up your account.");
+            }
             setMatchResult("Analysis failed. Please try again.");
         } finally {
             setIsMatching(false);
@@ -329,9 +339,22 @@ export const StreetWatch: React.FC<Props> = ({ dogs = [] }) => {
     setGroundedResults(null);
 
     navigator.geolocation.getCurrentPosition(async (position) => {
+      if (!(await spend(1))) {
+        setIsSearchingLocal(false);
+        return;
+      }
       const { latitude, longitude } = position.coords;
-      const result = await searchLocalDogServices(q, latitude, longitude);
-      setGroundedResults(result);
+      try {
+        const result = await searchLocalDogServices(q, latitude, longitude);
+        if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
+        setGroundedResults(result);
+      } catch (e) {
+        if (e instanceof InsufficientCreditsError) {
+          alert("You're out of AI credits! Please contact an admin to top up your account.");
+        } else {
+          setGroundedResults({ text: "Unable to find local services at the moment.", links: [] });
+        }
+      }
       setIsSearchingLocal(false);
     }, (error) => {
       console.error("Location error", error);

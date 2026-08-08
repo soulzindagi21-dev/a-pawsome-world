@@ -1,7 +1,8 @@
 
 import React, { useState, useRef } from 'react';
 import { Camera, CheckCircle, XCircle, ArrowLeft, Loader2, Upload, MapPin } from 'lucide-react';
-import { verifyFeedingProof, fileToGenerativePart } from '../geminiService';
+import { verifyFeedingProof, fileToGenerativePart, getLastCreditsSeen, InsufficientCreditsError } from '../geminiService';
+import { useCredits } from '../creditsContext';
 
 interface Props {
   onBack: () => void;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export const FeedingProofUpload: React.FC<Props> = ({ onBack, onSuccess }) => {
+  const { spend, sync } = useCredits();
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -101,14 +103,23 @@ export const FeedingProofUpload: React.FC<Props> = ({ onBack, onSuccess }) => {
     if (!file) return;
     setLoading(true);
     try {
+      if (!(await spend(1))) {
+        setLoading(false);
+        return;
+      }
       const part = await fileToGenerativePart(file);
       const verification = await verifyFeedingProof(part.inlineData.data);
+      if (getLastCreditsSeen() !== null) sync(getLastCreditsSeen()!);
       setResult(verification);
       if (verification.isValid) {
         setTimeout(onSuccess, 3000); // Wait 3s then trigger success callback
       }
     } catch (e) {
-      setResult({ isValid: false, reason: "Upload failed. Please try again." });
+      if (e instanceof InsufficientCreditsError) {
+        alert("You're out of AI credits! Please contact an admin to top up your account.");
+      } else {
+        setResult({ isValid: false, reason: "Upload failed. Please try again." });
+      }
     } finally {
       setLoading(false);
     }

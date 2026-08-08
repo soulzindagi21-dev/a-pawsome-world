@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppLogo, APP_NAME } from '../constants';
-import { Loader2, ShieldCheck, LockKeyhole, UserPlus } from 'lucide-react';
+import { Loader2, ShieldCheck, LockKeyhole, UserPlus, KeyRound } from 'lucide-react';
 import { UserRole } from '../types';
 import { supabase } from '../supabaseClient';
 
@@ -13,6 +13,10 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetSending, setResetSending] = useState(false);
+  const [resetSent, setResetSent] = useState(false);
 
   // Background config (unchanged)
   const [bgConfig] = useState(() => {
@@ -54,6 +58,27 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     handleLoginSubmit();
+  };
+
+  const handleSendResetEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail) return;
+    setResetSending(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: window.location.origin,
+      });
+      if (error) {
+        alert(error.message);
+      } else {
+        setResetSent(true);
+      }
+    } catch (err) {
+      console.error('Password reset error:', err);
+      alert('Could not send reset email. Please try again.');
+    } finally {
+      setResetSending(false);
+    }
   };
 
   // ✅ GOOGLE LOGIN HANDLER
@@ -107,6 +132,55 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
 
       {/* Form */}
       <div className="w-full max-w-xs z-10 mb-10">
+        {showForgotPassword ? (
+          <form onSubmit={handleSendResetEmail} className="space-y-4 flex flex-col items-center">
+            <div className="text-center mb-2">
+              <span className="inline-flex items-center gap-1 bg-white/80 px-3 py-1 rounded-full text-[10px] font-bold text-orange-600 border border-orange-100">
+                <KeyRound size={12} /> RESET PASSWORD
+              </span>
+            </div>
+
+            {resetSent ? (
+              <>
+                <p className="text-xs text-center text-[#8B5E3C] font-medium px-4">
+                  Check <strong>{resetEmail}</strong> for a password reset link.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => { setShowForgotPassword(false); setResetSent(false); setResetEmail(''); }}
+                  className="w-full text-[#D4C5B0] text-xs font-bold py-2"
+                >
+                  Back to Login
+                </button>
+              </>
+            ) : (
+              <>
+                <input
+                  type="email"
+                  placeholder="Your account email"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  required
+                  className="w-full bg-[#FCF8F2]/90 border border-[#F0E6D2] text-[#8B5E3C] px-6 py-4 rounded-[24px] text-center font-bold"
+                />
+                <button
+                  type="submit"
+                  disabled={resetSending}
+                  className="w-full bg-gradient-to-r from-[#F5D0A9] to-[#E6BA8C] text-[#8B5E3C] font-extrabold py-4 rounded-[30px]"
+                >
+                  {resetSending ? <Loader2 className="animate-spin mx-auto" /> : 'Send Reset Link'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPassword(false)}
+                  className="w-full text-[#D4C5B0] text-xs font-bold py-2"
+                >
+                  Back to Login
+                </button>
+              </>
+            )}
+          </form>
+        ) : (
         <form onSubmit={handleSubmit} className="space-y-4 flex flex-col items-center">
 
           <div className="w-full space-y-3">
@@ -131,6 +205,14 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full bg-[#FCF8F2]/90 border border-[#F0E6D2] text-[#8B5E3C] px-6 py-4 rounded-[24px] text-center font-bold"
             />
+
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(true)}
+              className="w-full text-right text-[#D4C5B0] text-[11px] font-bold hover:text-[#8B5E3C] transition-colors -mt-1 pr-2"
+            >
+              Forgot password?
+            </button>
           </div>
 
           {/* Normal Login */}
@@ -174,6 +256,7 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
             </button>
           </div>
         </form>
+        )}
       </div>
     </div>
   );
