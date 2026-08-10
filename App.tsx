@@ -588,6 +588,7 @@ const MainApp: React.FC<{ onLogout: () => void, initialUser: User, onUpdateUser:
                   onBack={() => setCurrentView('DASHBOARD')}
                   onLogout={onLogout}
                   onAddAppeal={handleAddAppeal}
+                  onUpdateUser={onUpdateUser}
                />;
       case 'SOCIAL_GENERATOR':
         return selectedAchievement ? (
@@ -875,7 +876,13 @@ const App = () => {
                 stats: profileData.stats || { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
                 feedingStreak: profileData.feeding_streak || 0,
                 lastProofDate: profileData.last_proof_date || null,
-                credits: profileData.credits ?? 20
+                credits: profileData.credits ?? 20,
+                email: profileData.email,
+                location: profileData.location || '',
+                bio: profileData.bio || '',
+                notifyEmergency: profileData.notify_emergency ?? false,
+                notifyCommunity: profileData.notify_community ?? false,
+                publicProfile: profileData.public_profile ?? false
               });
             } else {
               const meta = session.user.user_metadata;
