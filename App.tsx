@@ -945,25 +945,11 @@ const App = () => {
     }
   };
 
-  const handleLogin = async (username: string, password?: string, roleOverride?: UserRole) => {
-    if (roleOverride) {
-      // Mock login for admin — no Supabase event, so set user directly
-      setUser({
-        id: 'mock-admin',
-        name: 'Administrator',
-        username: 'admin',
-        role: roleOverride,
-        zone: 'Global',
-        joinedDate: new Date().toISOString().split('T')[0],
-        stats: { dogsFed: 0, reportsSubmitted: 0, karmaPoints: 0 },
-        feedingStreak: 0,
-        lastProofDate: null,
-        credits: 9999
-      });
-      return;
-    }
-
-    // Only authenticate — onAuthStateChange listener handles profile fetch + setUser
+  const handleLogin = async (username: string, password?: string) => {
+    // Only authenticate — onAuthStateChange listener handles profile fetch + setUser.
+    // Admin access is granted purely by the account's role column in the
+    // database (set by the project owner via the Supabase dashboard), never
+    // by a client-side bypass.
     const email = username.includes('@') ? username : `${username}@example.com`;
 
     const { error } = await supabase.auth.signInWithPassword({

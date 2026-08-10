@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { AppLogo, APP_NAME } from '../constants';
-import { Loader2, ShieldCheck, LockKeyhole, UserPlus, KeyRound } from 'lucide-react';
-import { UserRole } from '../types';
+import { Loader2, ShieldCheck, UserPlus, KeyRound } from 'lucide-react';
 import { supabase } from '../supabaseClient';
 
 interface Props {
-  onLogin: (username: string, password?: string, roleOverride?: UserRole) => Promise<void>;
+  onLogin: (username: string, password?: string) => Promise<void>;
 }
 
 export const Login: React.FC<Props> = ({ onLogin }) => {
@@ -50,11 +49,11 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
     }
   });
 
-  const handleLoginSubmit = async (targetRole?: UserRole) => {
+  const handleLoginSubmit = async () => {
     setLoading(true);
     setError('');
     try {
-      await onLogin(username, password, targetRole);
+      await onLogin(username, password);
       // Success: onAuthStateChange will set user and App will unmount Login
     } catch (err: any) {
       setError(err.message || 'Login failed');
@@ -252,14 +251,6 @@ export const Login: React.FC<Props> = ({ onLogin }) => {
           </button>
 
           <div className="w-full pt-4 border-t border-[#F0E6D2]/50 space-y-2">
-            <button
-              type="button"
-              onClick={() => handleLoginSubmit(UserRole.ADMIN)}
-              className="w-full text-[#D4C5B0] text-xs font-bold flex items-center justify-center gap-2 py-2"
-            >
-              <LockKeyhole size={12} /> Login as Administrator
-            </button>
-
             <button
               type="button"
               onClick={() => (window as any).toggleRegister?.()}
